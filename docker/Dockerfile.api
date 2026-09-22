@@ -9,6 +9,7 @@ COPY pyproject.toml .
 RUN uv sync --no-dev
 
 COPY app/ ./app
+COPY docker/ ./docker
 
 EXPOSE 8000
 

@@ -6,18 +6,27 @@ from pathlib import Path
 import psycopg
 
 def init_seed():
+  print("Connexion à PostgreSQL...")
   conn = psycopg.connect(DATABASE_URL)
   cur = conn.cursor()
 
-  # 1. Exécution du schéma SQL pour créer les tables et l'extension pgvector
-  sql_path = Path(__file__).parent.parent / "docker" / "init-db.sql"
+  # 1. On cherche le fichier init-db.sql au bon endroit dans le conteneur
+  # Le dossier racine de l'application est /app
+  sql_path = Path("/app/docker/init-db.sql")
+
+  # Si on tourne en local hors Docker, fallback sur le chemin relatif
+  if not sql_path.exists():
+    sql_path = Path(__file__).parent.parent / "docker" / "init-db.sql"
+
   if sql_path.exists():
-    print("Création des tables à partir du fichier init-db.sql...")
+    print(f"Création de la structure SQL depuis {sql_path}...")
     with open(sql_path, "r", encoding="utf-8") as f:
       cur.execute(f.read())
     conn.commit()
+  else:
+    print(f"⚠️ Fichier SQL non trouvé à l'emplacement : {sql_path}")
 
-  # 2. Nettoyage et réinitialisation des tables
+  # 2. Nettoyage et réinitialisation des données
   cur.execute(
       "TRUNCATE TABLE reservations, options_location, vehicules,"
       " modeles_vehicules, agences RESTART IDENTITY CASCADE;"
