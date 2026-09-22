@@ -2,6 +2,26 @@ import os
 import psycopg
 from pgvector.psycopg import register_vector
 from sentence_transformers import SentenceTransformer
+from pathlib import Path
+import psycopg
+
+def init_seed():
+  conn = psycopg.connect(DATABASE_URL)
+  cur = conn.cursor()
+
+  # 1. Exécution du schéma SQL pour créer les tables et l'extension pgvector
+  sql_path = Path(__file__).parent.parent / "docker" / "init-db.sql"
+  if sql_path.exists():
+    print("Création des tables à partir du fichier init-db.sql...")
+    with open(sql_path, "r", encoding="utf-8") as f:
+      cur.execute(f.read())
+    conn.commit()
+
+  # 2. Nettoyage et réinitialisation des tables
+  cur.execute(
+      "TRUNCATE TABLE reservations, options_location, vehicules,"
+      " modeles_vehicules, agences RESTART IDENTITY CASCADE;"
+  )
 
 # Connexion vers la BDD locale (Port 5435)
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgrespassword@localhost:5435/drivelocal")
