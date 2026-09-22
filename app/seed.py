@@ -3,8 +3,8 @@ import psycopg
 from pgvector.psycopg import register_vector
 from sentence_transformers import SentenceTransformer
 
-# Récupération de l'URL fournie par Railway (avec fallback local)
-DB_URL = os.getenv(
+# Connexion vers la BDD (Railway ou locale)
+DATABASE_URL = os.getenv(
     "DATABASE_URL",
     "postgresql://postgres:postgrespassword@localhost:5435/drivelocal",
 )
@@ -50,8 +50,8 @@ MODELES_DATA = [
         "transmission": "Automatique",
         "places": 5,
         "description": (
-            "Berline 100% électrique premium avec pilote automatique, très grand"
-            " confort et grande autonomie pour longs trajets."
+            "Berline 100% électrique premium avec pilote automatique, très"
+            " grand confort et grande autonomie pour longs trajets."
         ),
     },
     {
@@ -82,11 +82,7 @@ OPTIONS_DATA = [
         15.00,
         "Couverture complète sans franchise en cas d'accident.",
     ),
-    (
-        "Siège Bébé / Enfant",
-        5.00,
-        "Siège homologué pour la sécurité des enfants.",
-    ),
+    ("Siège Bébé / Enfant", 5.00, "Siège homologué pour la sécurité des enfants."),
     (
         "Conducteur Additionnel",
         8.00,
@@ -99,98 +95,87 @@ OPTIONS_DATA = [
     ),
 ]
 
+SCHEMA_SQL = """
+CREATE EXTENSION IF NOT EXISTS vector;
+
+DROP TABLE IF EXISTS reservations, options_location, vehicules, modeles_vehicules, agences CASCADE;
+
+CREATE TABLE agences (
+    agence_id SERIAL PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    ville VARCHAR(100) NOT NULL,
+    adresse TEXT NOT NULL
+);
+
+CREATE TABLE modeles_vehicules (
+    modele_id SERIAL PRIMARY KEY,
+    marque VARCHAR(50) NOT NULL,
+    modele VARCHAR(50) NOT NULL,
+    categorie VARCHAR(50) NOT NULL,
+    transmission VARCHAR(20) DEFAULT 'Automatique',
+    places INT DEFAULT 5,
+    description TEXT NOT NULL,
+    embedding vector(384)
+);
+
+CREATE TABLE vehicules (
+    vehicule_id SERIAL PRIMARY KEY,
+    agence_id INT REFERENCES agences(agence_id) ON DELETE CASCADE,
+    modele_id INT REFERENCES modeles_vehicules(modele_id) ON DELETE CASCADE,
+    prix_jour_eur DECIMAL(10,2) NOT NULL,
+    disponible BOOLEAN DEFAULT TRUE
+);
+
+CREATE TABLE options_location (
+    option_id SERIAL PRIMARY KEY,
+    nom VARCHAR(100) NOT NULL,
+    prix_jour_eur DECIMAL(10,2) NOT NULL,
+    description TEXT
+);
+
+CREATE TABLE reservations (
+    reservation_id SERIAL PRIMARY KEY,
+    client_nom VARCHAR(100) NOT NULL,
+    vehicule_id INT REFERENCES vehicules(vehicule_id),
+    date_debut DATE NOT NULL,
+    date_fin DATE NOT NULL,
+    prix_total DECIMAL(10,2) NOT NULL,
+    statut VARCHAR(20) DEFAULT 'EN_ATTENTE',
+    cree_le TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+"""
+
 
 def init_seed():
-  print("Chargement du modèle d'embeddings...")
-  model = SentenceTransformer(MODEL_NAME)
-
   print("Connexion à PostgreSQL...")
-  conn = psycopg.connect(DB_URL)
-
-  # 1. Activation pgvector
-  try:
-    with conn.cursor() as cur:
-      cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
-    conn.commit()
-    register_vector(conn)
-    print("Extension pgvector vérifiée/activée.")
-  except Exception as e:
-    print(f"Note pgvector: {e}")
-    conn.rollback()
-
+  conn = psycopg.connect(DATABASE_URL)
+  register_vector(conn)
   cur = conn.cursor()
 
-  # 2. Création du schéma SQL adapté à tes structures de données
-  print("Vérification et création des tables...")
-  SCHEMA_SQL = """
-    CREATE TABLE IF NOT EXISTS agences (
-        id_agence SERIAL PRIMARY KEY,
-        nom VARCHAR(100) NOT NULL,
-        ville VARCHAR(100) NOT NULL,
-        adresse TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS modeles_vehicules (
-        id_modele SERIAL PRIMARY KEY,
-        marque VARCHAR(50) NOT NULL,
-        modele VARCHAR(50) NOT NULL,
-        categorie VARCHAR(50) NOT NULL,
-        transmission VARCHAR(50),
-        places INT,
-        description TEXT,
-        embedding vector(384)
-    );
-
-    CREATE TABLE IF NOT EXISTS vehicules (
-        id_vehicule SERIAL PRIMARY KEY,
-        agence_id INT REFERENCES agences(id_agence),
-        modele_id INT REFERENCES modeles_vehicules(id_modele),
-        prix_jour_eur DECIMAL(10,2) NOT NULL,
-        statut VARCHAR(20) DEFAULT 'disponible'
-    );
-
-    CREATE TABLE IF NOT EXISTS options_location (
-        id_option SERIAL PRIMARY KEY,
-        nom VARCHAR(100) NOT NULL,
-        prix_jour_eur DECIMAL(10,2) NOT NULL,
-        description TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS reservations (
-        id_reservation SERIAL PRIMARY KEY,
-        id_vehicule INT REFERENCES vehicules(id_vehicule),
-        date_debut DATE NOT NULL,
-        date_fin DATE NOT NULL,
-        prix_total DECIMAL(10,2) NOT NULL
-    );
-    """
+  print("Re-création propre des tables (DROP & CREATE)...")
   cur.execute(SCHEMA_SQL)
   conn.commit()
 
-  # 3. Réinitialisation des données
-  print("Réinitialisation des tables...")
-  cur.execute(
-      "TRUNCATE TABLE reservations, options_location, vehicules,"
-      " modeles_vehicules, agences RESTART IDENTITY CASCADE;"
-  )
+  print("Chargement du modèle d'embeddings...")
+  model = SentenceTransformer(MODEL_NAME)
 
-  # 4. Insertion des agences
+  # Insert Agences
   print("Insertion des agences...")
   for nom, ville, adresse in AGENCES_DATA:
     cur.execute(
-        "INSERT INTO agences (nom, ville, adresse) VALUES (%s, %s, %s);",
+        "INSERT INTO agences (nom, ville, adresse) VALUES (%s, %s, %s)",
         (nom, ville, adresse),
     )
 
-  # 5. Insertion des modèles + Embeddings
+  # Insert Modèles + Embeddings
   print("Génération des embeddings et insertion des modèles...")
   for m in MODELES_DATA:
     emb = model.encode(m["description"], normalize_embeddings=True).tolist()
     cur.execute(
         """
-        INSERT INTO modeles_vehicules (marque, modele, categorie, transmission, places, description, embedding)
-        VALUES (%s, %s, %s, %s, %s, %s, %s);
-        """,
+            INSERT INTO modeles_vehicules (marque, modele, categorie, transmission, places, description, embedding)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            """,
         (
             m["marque"],
             m["modele"],
@@ -202,25 +187,25 @@ def init_seed():
         ),
     )
 
-  # 6. Insertion des véhicules
+  # Insert Flotte
   print("Insertion des véhicules...")
   for agence_id, modele_id, prix in VEHICULES_PRICES:
     cur.execute(
         """
-        INSERT INTO vehicules (agence_id, modele_id, prix_jour_eur)
-        VALUES (%s, %s, %s);
-        """,
+            INSERT INTO vehicules (agence_id, modele_id, prix_jour_eur)
+            VALUES (%s, %s, %s)
+            """,
         (agence_id, modele_id, prix),
     )
 
-  # 7. Insertion des options
+  # Insert Options
   print("Insertion des options...")
   for nom, prix, desc in OPTIONS_DATA:
     cur.execute(
         """
-        INSERT INTO options_location (nom, prix_jour_eur, description)
-        VALUES (%s, %s, %s);
-        """,
+            INSERT INTO options_location (nom, prix_jour_eur, description)
+            VALUES (%s, %s, %s)
+            """,
         (nom, prix, desc),
     )
 

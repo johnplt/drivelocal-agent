@@ -30,8 +30,8 @@ def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float 
             a.ville,
             (m.embedding <=> %s::vector) AS distance
         FROM vehicules v
-        JOIN modeles_vehicules m ON v.modele_id = m.id_modele
-        JOIN agences a ON v.agence_id = a.id_agence
+        JOIN modeles_vehicules m ON v.modele_id = m.modele_id
+        JOIN agences a ON v.agence_id = a.agence_id
         WHERE LOWER(a.ville) = LOWER(%s)
           AND v.disponible = TRUE
     """
