@@ -5,32 +5,80 @@ from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import psycopg
 
+
 def init_seed():
   print("Connexion à PostgreSQL...")
   conn = psycopg.connect(DATABASE_URL)
   cur = conn.cursor()
 
-  # 1. On cherche le fichier init-db.sql au bon endroit dans le conteneur
-  # Le dossier racine de l'application est /app
-  sql_path = Path("/app/docker/init-db.sql")
+  print("Création de l'extension pgvector et des tables si nécessaire...")
 
-  # Si on tourne en local hors Docker, fallback sur le chemin relatif
-  if not sql_path.exists():
-    sql_path = Path(__file__).parent.parent / "docker" / "init-db.sql"
+  # 1. Active l'extension vector si pas déjà activée
+  try:
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
+  except Exception as e:
+    print(f"Note pgvector: {e}")
+    conn.rollback()
 
-  if sql_path.exists():
-    print(f"Création de la structure SQL depuis {sql_path}...")
-    with open(sql_path, "r", encoding="utf-8") as f:
-      cur.execute(f.read())
-    conn.commit()
-  else:
-    print(f"⚠️ Fichier SQL non trouvé à l'emplacement : {sql_path}")
+  # 2. Création des tables si elles n'existent pas
+  SCHEMA_SQL = """
+    CREATE TABLE IF NOT EXISTS agences (
+        id_agence SERIAL PRIMARY KEY,
+        nom VARCHAR(100) NOT NULL,
+        ville VARCHAR(100) NOT NULL,
+        adresse TEXT
+    );
 
-  # 2. Nettoyage et réinitialisation des données
+    CREATE TABLE IF NOT EXISTS modeles_vehicules (
+        id_modele SERIAL PRIMARY KEY,
+        marque VARCHAR(50) NOT NULL,
+        modele VARCHAR(50) NOT NULL,
+        categorie VARCHAR(50) NOT NULL,
+        motorisation VARCHAR(50),
+        boite_vitesse VARCHAR(20),
+        nombre_places INT,
+        volume_coffre_litres INT,
+        description TEXT,
+        embedding vector(384)
+    );
+
+    CREATE TABLE IF NOT EXISTS vehicules (
+        id_vehicule SERIAL PRIMARY KEY,
+        id_modele INT REFERENCES modeles_vehicules(id_modele),
+        id_agence INT REFERENCES agences(id_agence),
+        immatriculation VARCHAR(20) UNIQUE,
+        prix_journalier DECIMAL(10,2) NOT NULL,
+        statut VARCHAR(20) DEFAULT 'disponible'
+    );
+
+    CREATE TABLE IF NOT EXISTS options_location (
+        id_option SERIAL PRIMARY KEY,
+        nom_option VARCHAR(100) NOT NULL,
+        prix_journalier DECIMAL(10,2) NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS reservations (
+        id_reservation SERIAL PRIMARY KEY,
+        id_vehicule INT REFERENCES vehicules(id_vehicule),
+        date_debut DATE NOT NULL,
+        date_fin DATE NOT NULL,
+        prix_total DECIMAL(10,2) NOT NULL
+    );
+    """
+
+  cur.execute(SCHEMA_SQL)
+  conn.commit()
+  print("Structure SQL vérifiée/créée avec succès.")
+
+  # 3. Réinitialisation propre des données
+  print("Réinitialisation des données...")
   cur.execute(
       "TRUNCATE TABLE reservations, options_location, vehicules,"
       " modeles_vehicules, agences RESTART IDENTITY CASCADE;"
   )
+  conn.commit()
+
+  # ... Reste de ton code seed (insertion des agences, modèles, véhicules, etc.) ...
 
 # Connexion vers la BDD locale (Port 5435)
 DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgrespassword@localhost:5435/drivelocal")
