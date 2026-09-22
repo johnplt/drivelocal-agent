@@ -8,7 +8,7 @@ API_URL = os.getenv("API_URL", "http://localhost:8000/api/arbitrer")
 # Titre de l'application
 st.set_page_config(page_title="DriveLocal — Concierge de Location", page_icon="🚗", layout="wide")
 
-st.title("🚗 DriveLocal — Concierge & Arbitrage de Location")
+st.title("🚗 DriveLocal — Planificateur Intelligent de Location de Véhicule")
 st.markdown("Trouvez le véhicule idéal grâce à la recherche sémantique (pgvector) et ajustez votre budget en temps réel.")
 
 st.divider()
