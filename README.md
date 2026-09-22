@@ -1,6 +1,7 @@
 # DriveLocal
 
-Assistant IA de recherche de véhicules de location et d'arbitrage budgétaire sémantique.
+![Texte alternatif](docs/images/drivelocal_image.jpg)
+
 
 ## À quoi sert ce projet ?
 
