@@ -1,5 +1,9 @@
 import streamlit as st
 import requests
+import os
+
+# Read the API URL from environment variables, fallback to localhost for non-Docker local dev
+API_URL = os.getenv("API_URL", "http://localhost:8000/api/arbitrer")
 
 # Titre de l'application
 st.set_page_config(page_title="DriveLocal — Concierge de Location", page_icon="🚗", layout="wide")
@@ -51,7 +55,7 @@ if st.button("🔎 Analyser et trouver mon véhicule", type="primary"):
 
     try:
         # Appel à l'API FastAPI
-        response = requests.post("http://localhost:8000/api/arbitrer", json=payload)
+        response = requests.post(API_URL, json=payload)
         res = response.json()
 
         if res.get("status") == "ok":
