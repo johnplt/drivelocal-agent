@@ -4,7 +4,7 @@ import streamlit as st
 
 # URL de base de l'API (sans le chemin d'endpoint)
 BASE_API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
-ENDPOINT_URL = f"{BASE_API_URL}/api/arbitrer"
+ENDPOINT_URL = f"{BASE_API_URL}/api/arbitrer/"
 
 # Configuration de la page
 st.set_page_config(
