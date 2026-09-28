@@ -74,7 +74,7 @@ if st.button("🔎 Analyser et trouver mon véhicule", type="primary"):
 
   try:
     # Appel à l'API FastAPI
-    response = requests.post(ENDPOINT_URL, json=payload, timeout=15)
+    response = requests.post(ENDPOINT_URL, json=payload, timeout=60)
 
     # Si le serveur renvoie un code 4xx ou 5xx, déclenche une exception HTTP
     response.raise_for_status()
