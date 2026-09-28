@@ -1,6 +1,10 @@
 import os
 import requests
 import streamlit as st
+import logging
+
+# Configuration de la journalisation
+logging.basicConfig(level=logging.INFO)
 
 # URL de base de l'API (sans le chemin d'endpoint)
 BASE_API_URL = os.getenv("API_URL", "http://localhost:8000").rstrip("/")
@@ -126,7 +130,10 @@ if st.button("🔎 Analyser et trouver mon véhicule", type="primary"):
       st.error(res.get("message", "Une erreur inconnue est survenue."))
 
   except requests.exceptions.RequestException as e:
-    st.error(f"❌ Erreur lors de la communication avec l'API ({ENDPOINT_URL})")
-    st.code(str(e))
+    # 1. Ce que l'utilisateur voit sur Streamlit (ultra propre)
+    st.error("❌ Le service d'arbitrage est temporairement indisponible. Veuillez réessayer dans un instant.")
+    
+    # 2. Ce qui part UNIQUEMENT dans les logs Railway
+    logging.error(f"[API ERROR] Échec lors de la requête vers l'API : {e}")
     if 'response' in locals() and hasattr(response, 'text'):
-      st.code(f"Réponse du serveur : {response.text}")
+        logging.error(f"[API ERROR] Statut : {response.status_code} - Réponse : {response.text}")
