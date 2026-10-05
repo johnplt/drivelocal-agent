@@ -1,219 +1,177 @@
 import os
 import psycopg
-from pgvector.psycopg import register_vector
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import InferenceClient
 
-# Connexion vers la BDD (Railway ou locale)
-DATABASE_URL = os.getenv(
-    "DATABASE_URL",
-    "postgresql://postgres:postgrespassword@localhost:5435/drivelocal",
-)
-MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+# Configuration & Token Hugging Face
+HF_TOKEN = os.getenv("HF_TOKEN")
+HF_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+DATABASE_URL = os.getenv("DATABASE_URL")
 
-AGENCES_DATA = [
-    ("DriveLocal Paris Gare de Lyon", "Paris", "15 Rue de Bercy, 75012 Paris"),
-    ("DriveLocal Lyon Part-Dieu", "Lyon", "5 Place Charles Béraudier, 69003 Lyon"),
-    (
-        "DriveLocal Marseille Blancarde",
-        "Marseille",
-        "Place de la Blancarde, 13004 Marseille",
-    ),
-]
+# Initialisation du client Hugging Face SDK
+hf_client = InferenceClient(token=HF_TOKEN)
 
-MODELES_DATA = [
-    {
-        "marque": "Renault",
-        "modele": "Clio Hybrid",
-        "categorie": "Citadine",
-        "transmission": "Automatique",
-        "places": 5,
-        "description": (
-            "Voiture citadine économique et compacte, idéale pour la ville et"
-            " les couples, faible consommation de carburant."
-        ),
-    },
-    {
-        "marque": "Peugeot",
-        "modele": "3008",
-        "categorie": "SUV",
-        "transmission": "Automatique",
-        "places": 5,
-        "description": (
-            "SUV familial spacieux avec grand coffre, idéal pour les vacances à"
-            " la montagne, les routes sinueuses et la route en famille."
-        ),
-    },
-    {
-        "marque": "Tesla",
-        "modele": "Model 3",
-        "categorie": "Berline",
-        "transmission": "Automatique",
-        "places": 5,
-        "description": (
-            "Berline 100% électrique premium avec pilote automatique, très"
-            " grand confort et grande autonomie pour longs trajets."
-        ),
-    },
-    {
-        "marque": "BMW",
-        "modele": "Série 4 Cab",
-        "categorie": "Cabriolet",
-        "transmission": "Automatique",
-        "places": 4,
-        "description": (
-            "Voiture cabriolet de luxe pour un week-end romantique en bord de"
-            " mer, conduite sportive et finitions haut de gamme."
-        ),
-    },
-]
 
-VEHICULES_PRICES = [
-    (1, 1, 45.00),  # Paris - Clio (45€/j)
-    (1, 2, 85.00),  # Paris - 3008 (85€/j)
-    (1, 3, 110.00),  # Paris - Tesla (110€/j)
-    (2, 1, 40.00),  # Lyon - Clio (40€/j)
-    (2, 2, 80.00),  # Lyon - 3008 (80€/j)
-    (3, 4, 130.00),  # Marseille - Cabriolet (130€/j)
-]
+def get_embedding(text: str) -> list[float]:
+    """Génère un embedding vectoriel via le SDK officiel Hugging Face."""
+    embedding = hf_client.feature_extraction(text, model=HF_MODEL)
 
-OPTIONS_DATA = [
-    (
-        "Assurance Tous Risques ZERO Franchise",
-        15.00,
-        "Couverture complète sans franchise en cas d'accident.",
-    ),
-    ("Siège Bébé / Enfant", 5.00, "Siège homologué pour la sécurité des enfants."),
-    (
-        "Conducteur Additionnel",
-        8.00,
-        "Permet à une deuxième personne de conduire pendant le séjour.",
-    ),
-    (
-        "GPS / Boîtier Wifi",
-        4.00,
-        "Système de navigation intégré et connexion internet itinérante.",
-    ),
-]
+    if hasattr(embedding, "tolist"):
+        embedding = embedding.tolist()
 
-SCHEMA_SQL = """
-CREATE EXTENSION IF NOT EXISTS vector;
+    if (
+        isinstance(embedding, list)
+        and len(embedding) > 0
+        and isinstance(embedding[0], list)
+    ):
+        return embedding[0]
 
-DROP TABLE IF EXISTS reservations, options_location, vehicules, modeles_vehicules, agences CASCADE;
-
-CREATE TABLE agences (
-    agence_id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    ville VARCHAR(100) NOT NULL,
-    adresse TEXT NOT NULL
-);
-
-CREATE TABLE modeles_vehicules (
-    modele_id SERIAL PRIMARY KEY,
-    marque VARCHAR(50) NOT NULL,
-    modele VARCHAR(50) NOT NULL,
-    categorie VARCHAR(50) NOT NULL,
-    transmission VARCHAR(20) DEFAULT 'Automatique',
-    places INT DEFAULT 5,
-    description TEXT NOT NULL,
-    embedding vector(384)
-);
-
-CREATE TABLE vehicules (
-    vehicule_id SERIAL PRIMARY KEY,
-    agence_id INT REFERENCES agences(agence_id) ON DELETE CASCADE,
-    modele_id INT REFERENCES modeles_vehicules(modele_id) ON DELETE CASCADE,
-    prix_jour_eur DECIMAL(10,2) NOT NULL,
-    disponible BOOLEAN DEFAULT TRUE
-);
-
-CREATE TABLE options_location (
-    option_id SERIAL PRIMARY KEY,
-    nom VARCHAR(100) NOT NULL,
-    prix_jour_eur DECIMAL(10,2) NOT NULL,
-    description TEXT
-);
-
-CREATE TABLE reservations (
-    reservation_id SERIAL PRIMARY KEY,
-    client_nom VARCHAR(100) NOT NULL,
-    vehicule_id INT REFERENCES vehicules(vehicule_id),
-    date_debut DATE NOT NULL,
-    date_fin DATE NOT NULL,
-    prix_total DECIMAL(10,2) NOT NULL,
-    statut VARCHAR(20) DEFAULT 'EN_ATTENTE',
-    cree_le TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-"""
+    return embedding
 
 
 def init_seed():
-  print("Connexion à PostgreSQL...")
-  conn = psycopg.connect(DATABASE_URL)
-  register_vector(conn)
-  cur = conn.cursor()
+    print("Connexion à Supabase...")
+    conn = psycopg.connect(DATABASE_URL)
+    cur = conn.cursor()
 
-  print("Re-création propre des tables (DROP & CREATE)...")
-  cur.execute(SCHEMA_SQL)
-  conn.commit()
+    # 1. Activation de l'extension pgvector
+    cur.execute("CREATE EXTENSION IF NOT EXISTS vector;")
 
-  print("Chargement du modèle d'embeddings...")
-  model = SentenceTransformer(MODEL_NAME)
+    # 2. Nettoyage et Re-création selon ton schéma Supabase
+    print("Création du schéma Supabase (Database.py standard)...")
+    cur.execute("""
+        DROP TABLE IF EXISTS vehicule_options CASCADE;
+        DROP TABLE IF EXISTS options_location CASCADE;
+        DROP TABLE IF EXISTS vehicules CASCADE;
+        DROP TABLE IF EXISTS modeles_vehicules CASCADE;
+        DROP TABLE IF EXISTS agences CASCADE;
 
-  # Insert Agences
-  print("Insertion des agences...")
-  for nom, ville, adresse in AGENCES_DATA:
-    cur.execute(
-        "INSERT INTO agences (nom, ville, adresse) VALUES (%s, %s, %s)",
-        (nom, ville, adresse),
+        CREATE TABLE agences (
+            agence_id SERIAL PRIMARY KEY,
+            nom VARCHAR(100) NOT NULL,
+            ville VARCHAR(100) NOT NULL
+        );
+
+        CREATE TABLE modeles_vehicules (
+            modele_id SERIAL PRIMARY KEY,
+            marque VARCHAR(50) NOT NULL,
+            modele VARCHAR(50) NOT NULL,
+            categorie VARCHAR(50) NOT NULL,
+            description TEXT,
+            embedding vector(384)
+        );
+
+        CREATE TABLE vehicules (
+            vehicule_id SERIAL PRIMARY KEY,
+            modele_id INT REFERENCES modeles_vehicules(modele_id),
+            agence_id INT REFERENCES agences(agence_id),
+            prix_jour_eur DECIMAL(10,2) NOT NULL,
+            disponible BOOLEAN DEFAULT TRUE
+        );
+
+        CREATE TABLE options_location (
+            option_id SERIAL PRIMARY KEY,
+            nom VARCHAR(100) NOT NULL,
+            prix_jour_eur DECIMAL(10,2) NOT NULL,
+            description TEXT
+        );
+
+        CREATE TABLE vehicule_options (
+            vehicule_id INT REFERENCES vehicules(vehicule_id),
+            option_id INT REFERENCES options_location(option_id),
+            PRIMARY KEY (vehicule_id, option_id)
+        );
+    """)
+
+    # 3. Insertion Agences
+    print("Insertion des agences...")
+    agences = [
+        ("DriveLocal Paris Centre", "Paris"),
+        ("DriveLocal Lyon Part-Dieu", "Lyon"),
+        ("DriveLocal Marseille Gare", "Marseille"),
+    ]
+    cur.executemany(
+        "INSERT INTO agences (nom, ville) VALUES (%s, %s);", agences
     )
 
-  # Insert Modèles + Embeddings
-  print("Génération des embeddings et insertion des modèles...")
-  for m in MODELES_DATA:
-    emb = model.encode(m["description"], normalize_embeddings=True).tolist()
-    cur.execute(
+    # 4. Insertion Modèles avec Embeddings
+    print("Génération des embeddings et insertion des modèles...")
+    modeles = [
+        {
+            "marque": "Renault",
+            "modele": "Clio 5",
+            "cat": "Citadine",
+            "desc": "Petite voiture économique idéale pour les trajets urbains et se garer facilement en ville.",
+        },
+        {
+            "marque": "Peugeot",
+            "modele": "3008",
+            "cat": "SUV",
+            "desc": "SUV familial spacieux avec grand coffre, idéal pour les longs trajets et la montagne.",
+        },
+        {
+            "marque": "Tesla",
+            "modele": "Model 3",
+            "cat": "Berline Électrique",
+            "desc": "Berline 100% électrique moderne avec conduite autonome assistée et grande autonomie.",
+        },
+        {
+            "marque": "BMW",
+            "modele": "Série 3",
+            "cat": "Berline Premium",
+            "desc": "Berline élégante et sportive, offre un grand confort de route pour rendez-vous professionnels.",
+        },
+    ]
+
+    for m in modeles:
+        emb = get_embedding(m["desc"])
+        cur.execute(
+            """
+            INSERT INTO modeles_vehicules (marque, modele, categorie, description, embedding)
+            VALUES (%s, %s, %s, %s, %s::vector);
+        """,
+            (m["marque"], m["modele"], m["cat"], m["desc"], str(emb)),
+        )
+
+    # 5. Insertion Véhicules
+    print("Insertion des véhicules...")
+    vehicules = [
+        (1, 1, 35.00, True),  # Clio Paris
+        (2, 1, 75.00, True),  # 3008 Paris
+        (3, 1, 95.00, True),  # Tesla Paris
+        (4, 1, 110.00, True),  # BMW Paris
+        (1, 2, 38.00, True),  # Clio Lyon
+        (2, 2, 70.00, True),  # 3008 Lyon
+        (3, 3, 90.00, True),  # Tesla Marseille
+    ]
+    cur.executemany(
         """
-            INSERT INTO modeles_vehicules (marque, modele, categorie, transmission, places, description, embedding)
-            VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """,
-        (
-            m["marque"],
-            m["modele"],
-            m["categorie"],
-            m["transmission"],
-            m["places"],
-            m["description"],
-            emb,
-        ),
+        INSERT INTO vehicules (modele_id, agence_id, prix_jour_eur, disponible)
+        VALUES (%s, %s, %s, %s);
+    """,
+        vehicules,
     )
 
-  # Insert Flotte
-  print("Insertion des véhicules...")
-  for agence_id, modele_id, prix in VEHICULES_PRICES:
-    cur.execute(
+    # 6. Insertion Options
+    print("Insertion des options...")
+    options = [
+        ("Siège bébé", 5.00, "Siège adapté de 9 à 36kg"),
+        ("Conducteur additionnel", 8.00, "Ajout d'un deuxième conducteur"),
+        ("GPS Premium", 4.00, "GPS mis à jour avec info trafic"),
+        ("Chaînes neige", 6.00, "Paire de chaînes adaptée au véhicule"),
+    ]
+    cur.executemany(
         """
-            INSERT INTO vehicules (agence_id, modele_id, prix_jour_eur)
-            VALUES (%s, %s, %s)
-            """,
-        (agence_id, modele_id, prix),
+        INSERT INTO options_location (nom, prix_jour_eur, description)
+        VALUES (%s, %s, %s);
+    """,
+        options,
     )
 
-  # Insert Options
-  print("Insertion des options...")
-  for nom, prix, desc in OPTIONS_DATA:
-    cur.execute(
-        """
-            INSERT INTO options_location (nom, prix_jour_eur, description)
-            VALUES (%s, %s, %s)
-            """,
-        (nom, prix, desc),
-    )
-
-  conn.commit()
-  cur.close()
-  conn.close()
-  print("Base de données initialisée avec succès !")
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("Base de données initialisée avec succès sur le bon schéma !")
 
 
 if __name__ == "__main__":
-  init_seed()
+    init_seed()

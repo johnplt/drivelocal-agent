@@ -19,8 +19,8 @@ services:
       dockerfile: docker/Dockerfile.api
     container_name: drivelocal_api
     restart: always
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgrespassword@db:5432/drivelocal
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     depends_on:
@@ -33,7 +33,7 @@ services:
     container_name: drivelocal_ui
     restart: always
     environment:
-      - API_URL=http://api:8000/api/arbitrer
+      - API_URL=http://api:8000
     ports:
       - "8501:8501"
     depends_on:

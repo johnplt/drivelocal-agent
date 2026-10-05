@@ -2,7 +2,6 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Installation directe de uv sans image externe
 RUN pip install --no-cache-dir uv
 
 COPY pyproject.toml .

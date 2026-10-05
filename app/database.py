@@ -1,20 +1,14 @@
 import os
 from typing import List, Dict, Any
 import psycopg
-from pgvector.psycopg import register_vector
-
-DB_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgrespassword@localhost:5435/drivelocal")
 
 def get_connection():
-    conn = psycopg.connect(DB_URL)
-    register_vector(conn)
-    return conn
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
+        raise ValueError("La variable d'environnement DATABASE_URL est introuvable.")
+    return psycopg.connect(database_url)
 
-def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float = None) -> List[Dict[Any, Any]]:
-    """
-    Recherche sémantique des véhicules les plus proches de l'embedding utilisateur,
-    filtrés par ville d'agence.
-    """
+def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float = None) -> List[Dict[str, Any]]:
     conn = get_connection()
     cur = conn.cursor()
 
@@ -35,7 +29,7 @@ def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float 
         WHERE LOWER(a.ville) = LOWER(%s)
           AND v.disponible = TRUE
     """
-    params = [vector, ville]
+    params = [str(vector), ville]
 
     if max_prix_jour is not None:
         query += " AND v.prix_jour_eur <= %s"
@@ -57,7 +51,7 @@ def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float 
             "prix_jour_eur": float(r[5]),
             "agence_nom": r[6],
             "ville": r[7],
-            "score_similarite": round(1 - r[8], 3)
+            "score_similarite": round(1 - float(r[8]), 3)
         })
 
     cur.close()
@@ -65,7 +59,6 @@ def chercher_vehicules_vectoriel(vector: list, ville: str, max_prix_jour: float 
     return results
 
 def get_options() -> List[Dict[str, Any]]:
-    """Récupère la liste des options disponibles."""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT option_id, nom, prix_jour_eur, description FROM options_location;")

@@ -18,11 +18,10 @@ def read_root():
 
 @app.post("/api/arbitrer")
 def api_arbitrer(demande: DemandLocation):
-    resultat = arbitrer_location(
+    return arbitrer_location(
         besoin_texte=demande.besoin_texte,
         ville=demande.ville,
         nb_jours=demande.nb_jours,
         budget_max=demande.budget_max,
         options_souhaitees=demande.options_ids
     )
-    return resultat
