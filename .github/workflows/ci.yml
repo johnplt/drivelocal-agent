@@ -47,19 +47,6 @@ jobs:
       - name: Install dependencies
         run: uv sync
 
-      - name: Initialize Database Schema and Seed Data
-        run: |
-          uv run python -c "
-          import psycopg
-          conn = psycopg.connect('postgresql://postgres:postgrespassword@localhost:5435/drivelocal')
-          cur = conn.cursor()
-          with open('docker/init-db.sql') as f:
-              cur.execute(f.read())
-          conn.commit()
-          conn.close()
-          "
-          uv run python app/seed.py
-
       - name: Run Pytest
         run: uv run pytest
 

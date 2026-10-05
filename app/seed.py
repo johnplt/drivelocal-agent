@@ -1,7 +1,10 @@
 import os
 import psycopg
 from huggingface_hub import InferenceClient
+from dotenv import load_dotenv
 
+
+load_dotenv()
 # Configuration & Token Hugging Face
 HF_TOKEN = os.getenv("HF_TOKEN")
 HF_MODEL = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
